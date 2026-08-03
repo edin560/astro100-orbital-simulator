@@ -202,36 +202,44 @@ class ProductionAstroSim(QMainWindow):
         """通用的 3D 轨迹与天体渲染算法"""
         a, e, inc = body["a"], body["e"], np.radians(body["inc"])
         color = body["color_cb"] if (self.is_colorblind and "color_cb" in body) else body.get("color_std", body.get("color"))
-        is_bound = body.get("is_bound", True) #是否受轨道约束
+        is_bound = body.get("is_bound", True)
 
-        if is_bound: # 椭圆/圆轨道
-            theta = np.linspace(0, 2 * np.pi, 150)
-            r = a * (1 - e**2) / (1 + e * np.cos(theta))
-            x = r * np.cos(theta)
-            y = r * np.sin(theta) * np.cos(inc)
-            z = r * np.sin(theta) * np.sin(inc)
-        else: # 31/ATLAS 双曲线逃逸轨道
-            theta = np.linspace(-1.1, 1.1, 150)
-            r = abs(a) * (e**2 - 1) / (1 + e * np.cos(theta))
-            x = r * np.cos(theta)
-            y = r * np.sin(theta) * np.cos(inc)
-            z = r * np.sin(theta) * np.sin(inc)
+        # 1. 画轨道线（150 点对于画线足够平滑）
+        if is_bound:
+            theta_line = np.linspace(0, 2 * np.pi, 200)
+            r_line = a * (1 - e**2) / (1 + e * np.cos(theta_line))
+        else:
+            theta_line = np.linspace(-1.1, 1.1, 200)
+            r_line = abs(a) * (e**2 - 1) / (1 + e * np.cos(theta_line))
 
-        pts = np.vstack([x, y, z]).transpose() # 将三个独立的 x, y, z 1维数组拼合成一个 N x 3 的 3D 空间坐标点阵列
-        orbit_line = gl.GLLinePlotItem(pos=pts, color=color, width=2, antialias=True) # 讲点用宽度为2的彩色实线连接起来
+        x_line = r_line * np.cos(theta_line)
+        y_line = r_line * np.sin(theta_line) * np.cos(inc)
+        z_line = r_line * np.sin(theta_line) * np.sin(inc)
+
+        pts = np.vstack([x_line, y_line, z_line]).transpose()
+        orbit_line = gl.GLLinePlotItem(pos=pts, color=color, width=2, antialias=True)
         self.view_3d.addItem(orbit_line)
         self.render_items.append(orbit_line)
 
-        # 3D 天体实体
+        # 2. 3D 天体实体
         p_md = gl.MeshData.sphere(rows=10, cols=10, radius=0.07)
         p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=color)
-        p_mesh.translate(x[0], y[0], z[0])
+        
+        # 初始位置
+        r0 = a * (1 - e**2) / (1 + e) if is_bound else abs(a) * (e**2 - 1) / (1 + e)
+        p_mesh.translate(r0, 0, 0)
+        
         self.view_3d.addItem(p_mesh)
         self.render_items.append(p_mesh)
 
-        # 加入动画绑定
+        # 3. 存储物理参数（用于动画实时连续计算，解决采样点不足导致的卡顿）
         self.animated_meshes.append(p_mesh)
-        self.animation_paths.append({"x": x, "y": y, "z": z, "speed": body.get("speed", 1.0)})
+        self.animation_paths.append({
+            "a": a, "e": e, "inc": inc, 
+            "is_bound": is_bound,
+            "speed": body.get("speed", 1.0),
+            "current_theta": 0.0 # 记录当前真近点角
+        })
 
     def render_habitable_zone_mesh(self, hz_cfg):
         """渲染绿色半透明宜居带色块"""
@@ -279,12 +287,33 @@ class ProductionAstroSim(QMainWindow):
             self.timer.stop()
 
     def update_animation(self):
-        self.time_step += 0.5
+        # 使用真实帧时间间隔推进，保证连续流畅
+        dt = 0.03  # 每帧增量
+        
         for i, mesh in enumerate(self.animated_meshes):
-            path = self.animation_paths[i]
-            idx = int((self.time_step * path["speed"])) % len(path["x"])
+            p = self.animation_paths[i]
+            
+            # 增量更新角度 theta，速度平滑且不受固定采样点限制
+            p["current_theta"] += p["speed"] * dt
+            theta = p["current_theta"]
+
+            a, e, inc = p["a"], p["e"], p["inc"]
+            
+            if p["is_bound"]:
+                theta = theta % (2 * np.pi)
+                r = a * (1 - e**2) / (1 + e * np.cos(theta))
+            else:
+                # 针对双曲线逃逸轨道的范围限制
+                theta = (np.sin(theta) * 1.1) 
+                r = abs(a) * (e**2 - 1) / (1 + e * np.cos(theta))
+
+            x = r * np.cos(theta)
+            y = r * np.sin(theta) * np.cos(inc)
+            z = r * np.sin(theta) * np.sin(inc)
+
+            # 更新 Mesh 坐标
             mesh.resetTransform()
-            mesh.translate(path["x"][idx], path["y"][idx], path["z"][idx])
+            mesh.translate(x, y, z)
 
     def clear_scene_memory(self):
         """彻底清理 3D 画布与内存中残留的 Mesh 句柄"""
