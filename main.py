@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import QTimer
 import pyqtgraph.opengl as gl
 
-# 导入我们解耦出来的另外两个模块
+# 导入我们解耦出来的渲染模块
 from renderer import SceneRenderer
 
 class ProductionAstroSim(QMainWindow):
@@ -139,7 +139,15 @@ class ProductionAstroSim(QMainWindow):
             self.build_trappist1_system()
 
     def build_solar_system(self):
-        self.renderer.render_star(radius=0.4, color=(1, 0.9, 0, 1))
+        # 1. 动态加载太阳参数（包括名称）
+        star_cfg = self.config["solar_system"].get("star", {"name": "Sun (太阳)", "radius": 0.4, "color": [1, 0.9, 0, 1]})
+        self.renderer.render_star(
+            radius=star_cfg.get("radius", 0.4), 
+            color=star_cfg.get("color", [1, 0.9, 0, 1]), 
+            name=star_cfg.get("name", "Sun (太阳)")
+        )
+
+        # 2. 渲染行星及小天体
         bodies = self.config["solar_system"]["planets"] + self.config["solar_system"]["small_bodies"]
         for body in bodies:
             self.renderer.render_orbital_body(body, self.is_colorblind)
@@ -154,9 +162,20 @@ class ProductionAstroSim(QMainWindow):
 
     def build_trappist1_system(self):
         data = self.config["exoplanets"]["trappist_1"]
-        self.renderer.render_star(radius=0.3, color=(1, 0.3, 0.1, 1))
+        
+        # 1. 动态加载 TRAPPIST-1 矮恒星参数（包括名称）
+        star_cfg = data.get("star", {"name": "TRAPPIST-1 (红矮星)", "radius": 0.3, "color": [1, 0.3, 0.1, 1]})
+        self.renderer.render_star(
+            radius=star_cfg.get("radius", 0.3), 
+            color=star_cfg.get("color", [1, 0.3, 0.1, 1]), 
+            name=star_cfg.get("name", "TRAPPIST-1 (红矮星)")
+        )
+
+        # 2. 渲染行星
         for planet in data["planets"]:
             self.renderer.render_orbital_body(planet, self.is_colorblind)
+            
+        # 3. 宜居带
         if self.show_hz:
             self.renderer.render_habitable_zone(data["habitable_zone"], self.is_colorblind)
 
@@ -191,6 +210,24 @@ class ProductionAstroSim(QMainWindow):
 
     def clear_scene_memory(self):
         self.renderer.clear()
+
+    def load_current_scene(self):
+        self.renderer.clear()
+
+        if self.current_system == "solar_system":
+            self.chk_hz.setEnabled(False)
+            self.info_box.setText("【太阳系模式】\n包含八大行星、高倾角冥王星、椭圆轨道哈雷彗星以及双曲线逃逸轨道的 31/ATLAS 彗星。")
+            self.build_solar_system()
+        elif self.current_system == "kepler_16":
+            self.chk_hz.setEnabled(False)
+            self.info_box.setText("【Kepler-16 系统】\n著名的双星系统，系外行星 Kepler-16 b 围绕两颗恒星的共同质心旋转。")
+            self.build_kepler16_system()
+        elif self.current_system == "trappist_1":
+            self.chk_hz.setEnabled(True)
+            self.info_box.setText("【TRAPPIST-1 系统】\n包含 7 颗行星，勾选‘显示宜居带’可查看位于宜居带内的行星 e, f, g。")
+            self.build_trappist1_system()
+
+        self.renderer.refresh_label_positions()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
