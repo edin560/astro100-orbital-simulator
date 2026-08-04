@@ -15,6 +15,15 @@ class SceneRenderer:
         self.labels = []
         self.grid_item = None
 
+        self._original_paintGL = self.view_3d.paintGL
+        self.view_3d.paintGL = self._on_view_paint
+
+    def _on_view_paint(self, *args, **kwargs):
+        # 1. 跑原本的 3D 渲染
+        self._original_paintGL(*args, **kwargs)
+        # 2. 3D 视图变动后，立刻更新 2D 标签屏幕位置
+        self.refresh_label_positions()
+
     def setup_grid(self):
         """初始化空间参考网格"""
         self.grid_item = gl.GLGridItem()
@@ -233,7 +242,6 @@ class SceneRenderer:
                 mesh.translate(x, y, z)
                 p["pos_3d"] = [x, y, z]
 
-        self.refresh_label_positions()
 
     def refresh_label_positions(self):
         if not self.labels:
