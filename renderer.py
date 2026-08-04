@@ -2,45 +2,144 @@ import numpy as np
 import pyqtgraph.opengl as gl
 from PyQt6.QtWidgets import QLabel
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QVector4D
+from PyQt6.QtGui import QVector4D, QVector3D
 from physics import calculate_kepler_position, calculate_star_position, generate_orbit_line_points
 
 class SceneRenderer:
     def __init__(self, view_3d):
         self.view_3d = view_3d
         self.render_items = []
+        self.orbit_lines = []   
         self.animated_meshes = []
         self.animation_paths = []
         self.labels = []
+        self.grid_item = None
 
-    def render_orbital_body(self, body, is_colorblind):
+    def setup_grid(self):
+        """初始化空间参考网格"""
+        self.grid_item = gl.GLGridItem()
+        self.grid_item.setSize(24, 24, 1)
+        self.grid_item.setSpacing(1, 1, 1)
+        self.view_3d.addItem(self.grid_item)
+
+    def toggle_grid(self, visible):
+        """显示 / 隐藏网格"""
+        if self.grid_item:
+            self.grid_item.setVisible(visible)
+
+    def toggle_orbits(self, visible):
+        """显示 / 隐藏所有轨道线条"""
+        for line in self.orbit_lines:
+            line.setVisible(visible)
+
+    def _apply_transparency(self, color_arr, alpha=0.35):
+        """将 RGB/RGBA 颜色数组转化为半透明 RGBA"""
+        c = list(color_arr)
+        if len(c) == 3:
+            c.append(alpha)
+        else:
+            c[3] = alpha
+        return c
+
+    def get_body_position(self, name):
+        """根据名称获取天体当前的 3D 物理坐标 [x, y, z]"""
+        for path in self.animation_paths:
+            if path.get("name") == name:
+                pos = path.get("pos_3d", [0.0, 0.0, 0.0])
+                return QVector3D(float(pos[0]), float(pos[1]), float(pos[2]))
+        return None
+
+    def get_body_telemetry(self, name):
+        """实时计算并返回指定天体的物理参数数据"""
+        for p in self.animation_paths:
+            if p.get("name") == name:
+                if p.get("is_static_star"):
+                    return {
+                        "name": name,
+                        "pos": [0.0, 0.0, 0.0],
+                        "r": 0.0,
+                        "v": 0.0,
+                        "a": 0.0,
+                        "e": 0.0,
+                        "period": "中央恒星 (固定)"
+                    }
+
+                pos = p.get("pos_3d", [0.0, 0.0, 0.0])
+                # 使用 np.linalg.norm 或 纯 Python 模长计算
+                r = float((pos[0]**2 + pos[1]**2 + pos[2]**2) ** 0.5)
+                
+                a = p.get("a", 1.0)
+                e = p.get("e", 0.0)
+                is_bound = p.get("is_bound", True)
+
+                if is_bound and a > 0:
+                    period_years = a ** 1.5
+                    period_str = f"{period_years:.2f} 年 ({period_years * 365.25:.1f} 天)"
+                else:
+                    period_str = "∞ (非闭合逃逸轨道)"
+
+                # Vis-Viva 活力公式近似计算线速度
+                if is_bound:
+                    v_rel = np.sqrt(max(0.001, (2.0 / max(r, 0.01)) - (1.0 / a)))
+                else:
+                    v_rel = np.sqrt(max(0.001, (2.0 / max(r, 0.01)) + (1.0 / abs(a))))
+                
+                v_kms = v_rel * 29.78  # 基于地球公转 29.78 km/s 进行基准转换
+
+                return {
+                    "name": name,
+                    "pos": pos,
+                    "r": r,
+                    "v": v_kms,
+                    "a": a,
+                    "e": e,
+                    "period": period_str
+                }
+        return None
+
+    def render_orbital_body(self, body, is_colorblind, show_orbits=True):
         a, e, inc = body["a"], body["e"], np.radians(body["inc"])
-        color = body["color_cb"] if (is_colorblind and "color_cb" in body) else body.get("color_std", body.get("color"))
+        base_color = body["color_cb"] if (is_colorblind and "color_cb" in body) else body.get("color_std", body.get("color"))
         is_bound = body.get("is_bound", True)
         name = body.get("name", "Unknown")
 
-        # 1. 轨道线
+        # 1. 半透明轨道线
+        orbit_color = self._apply_transparency(base_color, alpha=0.35)
         pts = generate_orbit_line_points(a, e, inc, is_bound)
-        orbit_line = gl.GLLinePlotItem(pos=pts, color=color, width=2, antialias=True)
+        
+        orbit_line = gl.GLLinePlotItem(
+            pos=pts, 
+            color=orbit_color, 
+            width=1.5, 
+            antialias=True, 
+            glOptions='translucent'
+        )
+        orbit_line.setVisible(show_orbits)
         self.view_3d.addItem(orbit_line)
         self.render_items.append(orbit_line)
+        self.orbit_lines.append(orbit_line)
 
-        # 2. 3D 行星实体
-        p_md = gl.MeshData.sphere(rows=10, cols=10, radius=0.07)
-        p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=color)
+        # 2. 实体行星
+        planet_color = list(base_color)
+        if len(planet_color) == 3:
+            planet_color.append(1.0)
+        else:
+            planet_color[3] = 1.0
+
+        p_md = gl.MeshData.sphere(rows=10, cols=10, radius=0.08)
+        p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=planet_color)
         r0 = a * (1 - e**2) / (1 + e) if is_bound else abs(a) * (e**2 - 1) / (1 + e)
         p_mesh.translate(r0, 0, 0)
         self.view_3d.addItem(p_mesh)
         self.render_items.append(p_mesh)
 
-        # 3. 2D 文本标签浮层
+        # 3. UI 标签
         lbl = QLabel(name, self.view_3d)
-        lbl.setStyleSheet("color: white; background-color: rgba(15, 23, 42, 0.75); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
+        lbl.setStyleSheet("color: white; background-color: rgba(15, 23, 42, 0.85); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
         lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         lbl.show()
         self.labels.append(lbl)
 
-        # 4. 存储属性
         self.animated_meshes.append(p_mesh)
         self.animation_paths.append({
             "name": name,
@@ -58,7 +157,7 @@ class SceneRenderer:
         self.render_items.append(star_mesh)
 
         lbl = QLabel(name, self.view_3d)
-        lbl.setStyleSheet("color: #FACC15; background-color: rgba(15, 23, 42, 0.85); border: 1px solid #FACC15; border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
+        lbl.setStyleSheet("color: #FACC15; background-color: rgba(15, 23, 42, 0.9); border: 1px solid #FACC15; border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
         lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         lbl.show()
         self.labels.append(lbl)
@@ -80,7 +179,7 @@ class SceneRenderer:
         self.render_items.append(s_mesh)
 
         lbl = QLabel(star.get("name", "Star"), self.view_3d)
-        lbl.setStyleSheet("color: #F87171; background-color: rgba(15, 23, 42, 0.85); border: 1px solid #F87171; border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
+        lbl.setStyleSheet("color: #F87171; background-color: rgba(15, 23, 42, 0.9); border: 1px solid #F87171; border-radius: 4px; padding: 2px 6px; font-weight: bold; font-size: 11px;")
         lbl.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         lbl.show()
         self.labels.append(lbl)
@@ -99,7 +198,10 @@ class SceneRenderer:
         })
 
     def render_habitable_zone(self, hz_cfg, is_colorblind):
-        color = hz_cfg["color_cb"] if is_colorblind else hz_cfg["color_std"]
+        color = self._apply_transparency(
+            hz_cfg["color_cb"] if is_colorblind else hz_cfg["color_std"], 
+            alpha=0.25
+        )
         r_in, r_out = hz_cfg["inner"], hz_cfg["outer"]
 
         theta = np.linspace(0, 2 * np.pi, 80)
@@ -108,7 +210,7 @@ class SceneRenderer:
             pts.append([r_in * np.cos(t), r_in * np.sin(t), 0])
             pts.append([r_out * np.cos(t), r_out * np.sin(t), 0])
 
-        hz_mesh = gl.GLLinePlotItem(pos=np.array(pts), color=color, width=4)
+        hz_mesh = gl.GLLinePlotItem(pos=np.array(pts), color=color, width=3, glOptions='translucent')
         self.view_3d.addItem(hz_mesh)
         self.render_items.append(hz_mesh)
 
@@ -134,7 +236,6 @@ class SceneRenderer:
         self.refresh_label_positions()
 
     def refresh_label_positions(self):
-        """修复参数传递后的 3D -> 2D 坐标映射逻辑"""
         if not self.labels:
             return
 
@@ -147,7 +248,6 @@ class SceneRenderer:
             region = (0, 0, w, h)
             viewport = (0, 0, w, h)
 
-            # 正确给 projectionMatrix 传入 region 与 viewport
             view_m = self.view_3d.viewMatrix()
             proj_m = self.view_3d.projectionMatrix(region, viewport)
             mvp = proj_m * view_m
@@ -156,7 +256,6 @@ class SceneRenderer:
                 lbl = self.labels[i]
                 pos = p["pos_3d"]
 
-                # 构造齐次坐标（Z轴抬高 0.15 避免文字覆盖球体中心）
                 v_3d = QVector4D(float(pos[0]), float(pos[1]), float(pos[2] + 0.15), 1.0)
                 vt = mvp * v_3d
 
@@ -165,7 +264,6 @@ class SceneRenderer:
                     ndc_y = vt.y() / vt.w()
                     ndc_z = vt.z() / vt.w()
 
-                    # 判断是否在视野的前裁剪面和后裁剪面之间 (-1 <= Z <= 1)
                     if -1.0 <= ndc_z <= 1.0:
                         lbl.show()
                         screen_x = int((ndc_x + 1.0) * 0.5 * w)
@@ -184,6 +282,7 @@ class SceneRenderer:
             lbl.deleteLater()
 
         self.render_items.clear()
+        self.orbit_lines.clear()
         self.animated_meshes.clear()
         self.animation_paths.clear()
         self.labels.clear()
