@@ -3,51 +3,50 @@ import json
 import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QCheckBox, QComboBox, 
-                             QLabel, QGroupBox, QTextEdit)
-from PyQt6.QtCore import QTimer
+                             QGroupBox, QTextEdit, QSlider, QLabel)
+from PyQt6.QtCore import QTimer, Qt, QDate
+from PyQt6.QtGui import QVector3D
 import pyqtgraph.opengl as gl
 
+from renderer import SceneRenderer
+
 class ProductionAstroSim(QMainWindow):
-    # ProductionAstroSim 类继承 QMainWindow 的所有能力
     def __init__(self, config_path="astro_data.json"):
         super().__init__()
         self.setWindowTitle("ASTRO100 Orbital Simulation Tool - University Release")
         self.resize(1280, 850)
 
-        # 1. 加载数据
+        # 时间系统变量
+        self.sim_days = 0.0                     
+        self.speed_factor = 1.0                 
+        self.base_date = QDate(2026, 1, 1)      
+
         with open(config_path, 'r', encoding='utf-8') as f:
-            self.config = json.load(f) # 解析成dict and list以供使用
+            self.config = json.load(f)
 
-        # 2. 状态变量
-        self.current_system = "solar_system" # "solar_system", "kepler_16", "trappist_1"
-        self.is_colorblind = False #色盲模式（关）
-        self.show_hz = False # 宜居带（关）
-        self.is_playing = False # 播放动画 （关）
-        self.time_step = 0.0 # 时间累加器，动画每更新一帧，这个值就会按照一定的速度递增，然后代入到开普勒方程里算出每个行星在这一刻的 3D 位置 (x, y, z)
+        self.current_system = "solar_system"
+        self.is_colorblind = False
+        self.show_hz = False
+        self.show_orbits = True   
+        self.is_playing = False
 
-        # 资源清理句柄
-        self.render_items = [] # 存放场景里的所有静态 3D 对象（比如轨道线、宜居带半透明环、恒星等）。
-        self.animated_meshes = [] # 专门存放需要移动的 3D 网格（比如会公转的行星球体对象）。
-        self.animation_paths = [] # 存放这些移动行星对应的开普勒轨道数学轨迹数据
-
-        # 3. 动画定时器
-        self.timer = QTimer() # 创建一个 Qt 内部的硬件级定时器对象。
+        self.timer = QTimer()
         self.timer.timeout.connect(self.update_animation)
-        # 整行逻辑：相当于告诉系统——“一旦定时器计时结束（比如每隔 30 毫秒），立刻自动去触发 self.update_animation() 函数，把所有行星的位置往前推进一帧！
 
-        # 4. 初始化 UI
         self.init_ui()
+        self.renderer = SceneRenderer(self.view_3d)
+        self.renderer.setup_grid()
+        
         self.load_current_scene()
 
     def init_ui(self):
-        main_widget = QWidget() # 没有任何样式的空白面板, 承载后续所有的按钮、控制面板和 3D 画布
-        self.setCentralWidget(main_widget) # 刚才创建的 main_widget 填充到正中间的整个空白区域
-        main_layout = QHBoxLayout(main_widget) # 水平布局直接绑定到 main_widget 上
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        main_layout = QHBoxLayout(main_widget)
 
-        # === 左侧面板：控制与交互区 ===
         sidebar = QVBoxLayout()
 
-        # Group 1: 模拟模式与场景切换
+        # Group 1: 实验场景选择
         sys_group = QGroupBox("1. 实验场景选择 (Expt Mode)")
         sys_layout = QVBoxLayout()
         self.combo_system = QComboBox()
@@ -56,45 +55,109 @@ class ProductionAstroSim(QMainWindow):
             "Kepler-16 双星系统 (Binary Star System)",
             "TRAPPIST-1 宜居带对比 (Exoplanets & Habitable Zone)"
         ])
-        self.combo_system.currentIndexChanged.connect(self.on_system_change) # 事件监听
+        self.combo_system.currentIndexChanged.connect(self.on_system_change)
         sys_layout.addWidget(self.combo_system)
-        sys_group.setLayout(sys_layout) # 塞入盒子
+        sys_group.setLayout(sys_layout)
 
-        # Group 2: 视角控制 (Camera Views)
-        cam_group = QGroupBox("2. 视角快速切换 (Camera View Controls)")
-        cam_layout = QHBoxLayout()
-        btn_cam_3d = QPushButton("3D 视角")
-        btn_cam_3d.clicked.connect(lambda: self.set_camera_view(distance=15, elev=30, azim=45)) # 设置lambda以防程序开始时就执行函数
+        # Group 2: 视角与追踪控制
+        cam_group = QGroupBox("2. 视角与追踪 (Camera & Tracking)")
+        cam_layout = QVBoxLayout()
+
+        btn_layout = QHBoxLayout()
+        btn_cam_3d = QPushButton("3D 全景")
+        btn_cam_3d.clicked.connect(lambda: self.reset_camera_target(distance=15, elev=30, azim=45))
         btn_cam_top = QPushButton("Top 俯视")
-        btn_cam_top.clicked.connect(lambda: self.set_camera_view(distance=15, elev=90, azim=0))
-        cam_layout.addWidget(btn_cam_3d)
-        cam_layout.addWidget(btn_cam_top)
-        cam_group.setLayout(cam_layout) # 塞入盒子
+        btn_cam_top.clicked.connect(lambda: self.reset_camera_target(distance=15, elev=90, azim=0))
+        btn_layout.addWidget(btn_cam_3d)
+        btn_layout.addWidget(btn_cam_top)
 
-        # Group 3: 业务功能与无障碍开关
+        track_layout = QHBoxLayout()
+        track_label = QLabel("聚焦目标:")
+        self.combo_target = QComboBox()
+        self.combo_target.addItem("🌐 全局质心 (System Center)", userData=None)
+        self.combo_target.currentIndexChanged.connect(self.on_target_changed)
+        track_layout.addWidget(track_label)
+        track_layout.addWidget(self.combo_target)
+
+        cam_layout.addLayout(btn_layout)
+        cam_layout.addLayout(track_layout)
+        cam_group.setLayout(cam_layout)
+
+        # Group 3: 辅助开关
         opt_group = QGroupBox("3. 实验观察辅助开关 (Toggles)")
         opt_layout = QVBoxLayout()
-        self.chk_hz = QCheckBox("显示宜居带 (Habitable Zone)")
-        self.chk_hz.toggled.connect(self.on_hz_toggle) # 调用函数
-        self.chk_cb = QCheckBox("色盲友好模式 (Colorblind Theme)")
-        self.chk_cb.toggled.connect(self.on_colorblind_toggle) #调用对应函数connect
-        opt_layout.addWidget(self.chk_hz) # 第一个开关入盒
-        opt_layout.addWidget(self.chk_cb) # 第二个开关入盒
-        opt_group.setLayout(opt_layout) # 塞入盒子
+        
+        self.chk_grid = QCheckBox("显示空间参考网格 (Grid)")
+        self.chk_grid.setChecked(True)
+        self.chk_grid.toggled.connect(self.on_grid_toggle)
 
-        # Group 4: 播放控制与内存优化
-        play_group = QGroupBox("4. 运行控制 (Simulation)")
+        self.chk_orbits = QCheckBox("显示天体轨道 (Orbit Lines)")
+        self.chk_orbits.setChecked(True)
+        self.chk_orbits.toggled.connect(self.on_orbits_toggle)
+
+        self.chk_hz = QCheckBox("显示宜居带 (Habitable Zone)")
+        self.chk_hz.toggled.connect(self.on_hz_toggle)
+
+        self.chk_cb = QCheckBox("色盲友好模式 (Colorblind Theme)")
+        self.chk_cb.toggled.connect(self.on_colorblind_toggle)
+
+        opt_layout.addWidget(self.chk_grid)
+        opt_layout.addWidget(self.chk_orbits)
+        opt_layout.addWidget(self.chk_hz)
+        opt_layout.addWidget(self.chk_cb)
+        opt_group.setLayout(opt_layout)
+
+        # Group 4: 运行与时间控制
+        play_group = QGroupBox("4. 运行与时间控制 (Simulation)")
         play_layout = QVBoxLayout()
-        self.btn_play = QPushButton("▶ 播放轨道动画")
+
+        btn_ctrl_layout = QHBoxLayout()
+        self.btn_play = QPushButton("▶ 播放动画")
         self.btn_play.clicked.connect(self.toggle_play)
-        self.btn_clear = QPushButton("🧹 释放内存 / 重置场景")
+
+        self.btn_reset_time = QPushButton("⏱ 重置时间")
+        self.btn_reset_time.clicked.connect(self.reset_sim_time)
+
+        self.btn_clear = QPushButton("🧹 释放内存")
         self.btn_clear.clicked.connect(self.clear_scene_memory)
-        play_layout.addWidget(self.btn_play)
-        play_layout.addWidget(self.btn_clear)
+
+        btn_ctrl_layout.addWidget(self.btn_play)
+        btn_ctrl_layout.addWidget(self.btn_reset_time)
+        btn_ctrl_layout.addWidget(self.btn_clear)
+
+        speed_label_layout = QHBoxLayout()
+        speed_title = QLabel("模拟速率:")
+        self.lbl_speed_val = QLabel("1.0x")
+        self.lbl_speed_val.setStyleSheet("font-weight: bold; color: #38BDF8;")
+        speed_label_layout.addWidget(speed_title)
+        speed_label_layout.addWidget(self.lbl_speed_val)
+        speed_label_layout.addStretch()
+
+        self.slider_speed = QSlider(Qt.Orientation.Horizontal)
+        self.slider_speed.setRange(1, 100)      
+        self.slider_speed.setValue(10)          
+        self.slider_speed.valueChanged.connect(self.on_speed_change)
+
+        self.lbl_clock = QLabel("🗓 2026-01-01\n⏱ 经过: 0 天 (0.00 年)")
+        self.lbl_clock.setStyleSheet("""
+            background-color: #0F172A; 
+            color: #4ADE80; 
+            border: 1px solid #334155; 
+            border-radius: 4px; 
+            padding: 6px; 
+            font-family: monospace; 
+            font-size: 12px; 
+            font-weight: bold;
+        """)
+
+        play_layout.addLayout(btn_ctrl_layout)
+        play_layout.addLayout(speed_label_layout)
+        play_layout.addWidget(self.slider_speed)
+        play_layout.addWidget(self.lbl_clock)
         play_group.setLayout(play_layout)
 
-        # Group 5: 教学知识点说明信息框
-        info_group = QGroupBox("5. 教学说明与天体信息 (Info)")
+        # Group 5: 物理遥测与信息框
+        info_group = QGroupBox("5. 实时物理遥测与说明 (Live Telemetry)")
         info_layout = QVBoxLayout()
         self.info_box = QTextEdit()
         self.info_box.setReadOnly(True)
@@ -107,167 +170,146 @@ class ProductionAstroSim(QMainWindow):
         sidebar.addWidget(play_group)
         sidebar.addWidget(info_group)
 
-        # === 右侧面板：3D 渲染画布 ===
-        self.view_3d = gl.GLViewWidget() # 造3D屏幕，提供3D渲染窗口
+        # === 右侧 3D 渲染画布 ===
+        self.view_3d = gl.GLViewWidget()
         self.set_camera_view(distance=15, elev=30, azim=45)
-        # 相机离中心太阳的距离为 15 个单位（拉远/拉近）
-        # 相机的仰角为 30 度（稍微俯视视角）
-        # 相机的方位角/旋转角为 45 度（斜着看，让 3D 空间感最强）
 
-        # 添加底面网格
-        grid = gl.GLGridItem() # 造网格
-        grid.setSize(24, 24, 1) # 设置整体大小
-        grid.setSpacing(1, 1, 1) # 设置间隙大小，网格上每隔 1 个单位画一条格子线
-        self.view_3d.addItem(grid) # 放在画布中
+        sidebar_widget = QWidget()
+        sidebar_widget.setLayout(sidebar)
+        sidebar_widget.setMaximumWidth(320)
 
-        sidebar_widget = QWidget() # 造底板（地基）
-        sidebar_widget.setLayout(sidebar) # 给五个功能塞到地基里
-        sidebar_widget.setMaximumWidth(320) # 设置最大宽度，这样无论如何调整窗口，功能栏不会扭曲
+        main_layout.addWidget(sidebar_widget)
+        main_layout.addWidget(self.view_3d)
 
-        main_layout.addWidget(sidebar_widget) #入箱子
-        main_layout.addWidget(self.view_3d) #入箱
+    def populate_target_combo(self):
+        """填充聚焦目标下拉框"""
+        self.combo_target.blockSignals(True)
+        self.combo_target.clear()
+        self.combo_target.addItem("🌐 全局质心 (System Center)", userData=None)
+        
+        for path in self.renderer.animation_paths:
+            name = path.get("name", "Unknown")
+            self.combo_target.addItem(f"🪐 {name}", userData=name)
+            
+        self.combo_target.blockSignals(False)
 
-    # === 渲染核心逻辑 ===
+    def update_telemetry_panel(self):
+        """动态渲染选中天体的物理参数面板"""
+        target_name = self.combo_target.currentData()
+        
+        if not target_name:
+            if self.current_system == "solar_system":
+                self.info_box.setText("【太阳系模式】\n包含八大行星、高倾角冥王星、椭圆轨道哈雷彗星以及双曲线逃逸轨道的 31/ATLAS 彗星。\n\n💡 提示：在上方下拉菜单选择天体，即可开启追踪并查看实时物理参数。")
+            elif self.current_system == "kepler_16":
+                self.info_box.setText("【Kepler-16 系统】\n著名的双星系统，系外行星 Kepler-16 b 围绕两颗恒星的共同质心旋转。")
+            elif self.current_system == "trappist_1":
+                self.info_box.setText("【TRAPPIST-1 系统】\n包含 7 颗行星，勾选‘显示宜居带’可查看位于宜居带内的行星 e, f, g。")
+            return
+
+        data = self.renderer.get_body_telemetry(target_name)
+        if data:
+            html_info = f"""
+            <div style='font-family: sans-serif; font-size: 12px;'>
+                <h3 style='color: #38BDF8; margin: 0px 0px 6px 0px;'>🪐 {data['name']}</h3>
+                <hr style='border: 1px solid #334155; margin-bottom: 8px;'>
+                <p style='margin: 3px 0;'><b>📍 瞬时位置 (3D):</b><br>
+                <code style='color: #FACC15;'>X:{data['pos'][0]:.2f} | Y:{data['pos'][1]:.2f} | Z:{data['pos'][2]:.2f}</code></p>
+                
+                <p style='margin: 5px 0;'><b>📏 距离主星 (r):</b> <span style='color: #4ADE80; font-weight: bold;'>{data['r']:.3f} AU</span></p>
+                <p style='margin: 5px 0;'><b>⚡ 瞬时公转速度 (v):</b> <span style='color: #F87171; font-weight: bold;'>{data['v']:.2f} km/s</span></p>
+                <p style='margin: 5px 0;'><b>⏱ 轨道周期 (T):</b> <span style='color: #E0E7FF;'>{data['period']}</span></p>
+                
+                <hr style='border: 1px solid #334155; margin: 8px 0;'>
+                <p style='margin: 3px 0;'><b>📐 半长轴 (a):</b> {data['a']:.2f} AU</p>
+                <p style='margin: 3px 0;'><b>🌀 偏心率 (e):</b> {data['e']:.3f} ({'椭圆轨道' if data['e'] < 1 else '双曲线逃逸'})</p>
+            </div>
+            """
+            self.info_box.setHtml(html_info)
+
     def load_current_scene(self):
-        """根据当前选中的场景加载数据并渲染"""
-        self.clear_scene_memory() # 先清理一遍内存
+        self.renderer.clear()
 
         if self.current_system == "solar_system":
             self.chk_hz.setEnabled(False)
-            self.info_box.setText("【太阳系模式】\n包含八大行星、高倾角冥王星、椭圆轨道哈雷彗星以及双曲线逃逸轨道的 31/ATLAS 彗星。")
             self.build_solar_system()
         elif self.current_system == "kepler_16":
             self.chk_hz.setEnabled(False)
-            self.info_box.setText("【Kepler-16 系统】\n著名的双星系统，系外行星 Kepler-16 b 围绕两颗恒星的共同质心旋转。")
             self.build_kepler16_system()
         elif self.current_system == "trappist_1":
             self.chk_hz.setEnabled(True)
-            self.info_box.setText("【TRAPPIST-1 系统】\n包含 7 颗行星，勾选‘显示宜居带’可查看位于宜居带内的行星 e, f, g。")
             self.build_trappist1_system()
 
-    def build_solar_system(self):
-        """绘制太阳系：八大行星 + 冥王星 + 彗星"""
-        # 1. 太阳
-        sun_md = gl.MeshData.sphere(rows=12, cols=24, radius=0.4) # 捏一个球体骨架，rows=12, cols=24，指的是球体的网格密度，横向 12 圈，纵向 24 圈
-        sun_mesh = gl.GLMeshItem(meshdata=sun_md, smooth=True, color=(1, 0.9, 0, 1), shader='balloon') # 骨架渲染
-        self.view_3d.addItem(sun_mesh) # 放入画布
-        self.render_items.append(sun_mesh) # 放入待释放缓存列表
+        self.renderer.refresh_label_positions()
+        self.populate_target_combo()
+        self.update_telemetry_panel()
 
-        # 2. 天体列表
+    def build_solar_system(self):
+        star_cfg = self.config["solar_system"].get("star", {"name": "Sun (太阳)", "radius": 0.4, "color": [1, 0.9, 0, 1]})
+        self.renderer.render_star(
+            radius=star_cfg.get("radius", 0.4), 
+            color=star_cfg.get("color", [1, 0.9, 0, 1]), 
+            name=star_cfg.get("name", "Sun (太阳)")
+        )
+
         bodies = self.config["solar_system"]["planets"] + self.config["solar_system"]["small_bodies"]
         for body in bodies:
-            self.render_orbital_body(body) # 交给函数计算轨迹弧线并防止行星
+            self.renderer.render_orbital_body(body, self.is_colorblind, self.show_orbits)
 
     def build_kepler16_system(self):
-        """绘制 Kepler-16 双星系统"""
         data = self.config["exoplanets"]["kepler_16"]
-        
-        # 渲染双星
-        for star in data["stars"]:
-            s_md = gl.MeshData.sphere(rows=10, cols=20, radius=star["radius"])
-            s_mesh = gl.GLMeshItem(meshdata=s_md, smooth=True, color=star["color"], shader='balloon')
-            self.view_3d.addItem(s_mesh)
-            self.render_items.append(s_mesh)
-            
-            # 双星小范围旋转路径
-            theta = np.linspace(0, 2 * np.pi, 100) # 切分圆周角：把一个圆周均分成 100 份
-            r = star["orbit_r"]
-            x, y, z = r * np.cos(theta), r * np.sin(theta), np.zeros_like(theta)
-            self.animated_meshes.append(s_mesh)
-            self.animation_paths.append({"x": x, "y": y, "z": z, "speed": 1.5})
-
-        # 渲染环双星行星
+        for i, star in enumerate(data["stars"]):
+            phase_offset = 0.0 if i == 0 else np.pi
+            self.renderer.render_binary_star(star, phase_offset)
         for planet in data["planets"]:
-            self.render_orbital_body(planet)
+            self.renderer.render_orbital_body(planet, self.is_colorblind, self.show_orbits)
 
     def build_trappist1_system(self):
-        """绘制 TRAPPIST-1 系统及宜居带"""
         data = self.config["exoplanets"]["trappist_1"]
+        star_cfg = data.get("star", {"name": "TRAPPIST-1 (红矮星)", "radius": 0.3, "color": [1, 0.3, 0.1, 1]})
+        self.renderer.render_star(
+            radius=star_cfg.get("radius", 0.3), 
+            color=star_cfg.get("color", [1, 0.3, 0.1, 1]), 
+            name=star_cfg.get("name", "TRAPPIST-1 (红矮星)")
+        )
 
-        # 矮恒星
-        star_md = gl.MeshData.sphere(rows=12, cols=24, radius=0.3)
-        star_mesh = gl.GLMeshItem(meshdata=star_md, smooth=True, color=(1, 0.3, 0.1, 1), shader='balloon')
-        self.view_3d.addItem(star_mesh)
-        self.render_items.append(star_mesh)
-
-        # 7 颗行星
         for planet in data["planets"]:
-            self.render_orbital_body(planet)
-
-        # 宜居带渲染
+            self.renderer.render_orbital_body(planet, self.is_colorblind, self.show_orbits)
+            
         if self.show_hz:
-            self.render_habitable_zone_mesh(data["habitable_zone"])
+            self.renderer.render_habitable_zone(data["habitable_zone"], self.is_colorblind)
 
-    def render_orbital_body(self, body):
-        """通用的 3D 轨迹与天体渲染算法"""
-        a, e, inc = body["a"], body["e"], np.radians(body["inc"])
-        color = body["color_cb"] if (self.is_colorblind and "color_cb" in body) else body.get("color_std", body.get("color"))
-        is_bound = body.get("is_bound", True)
-
-        # 1. 画轨道线（150 点对于画线足够平滑）
-        if is_bound:
-            theta_line = np.linspace(0, 2 * np.pi, 200)
-            r_line = a * (1 - e**2) / (1 + e * np.cos(theta_line))
-        else:
-            theta_line = np.linspace(-1.1, 1.1, 200)
-            r_line = abs(a) * (e**2 - 1) / (1 + e * np.cos(theta_line))
-
-        x_line = r_line * np.cos(theta_line)
-        y_line = r_line * np.sin(theta_line) * np.cos(inc)
-        z_line = r_line * np.sin(theta_line) * np.sin(inc)
-
-        pts = np.vstack([x_line, y_line, z_line]).transpose()
-        orbit_line = gl.GLLinePlotItem(pos=pts, color=color, width=2, antialias=True)
-        self.view_3d.addItem(orbit_line)
-        self.render_items.append(orbit_line)
-
-        # 2. 3D 天体实体
-        p_md = gl.MeshData.sphere(rows=10, cols=10, radius=0.07)
-        p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=color)
-        
-        # 初始位置
-        r0 = a * (1 - e**2) / (1 + e) if is_bound else abs(a) * (e**2 - 1) / (1 + e)
-        p_mesh.translate(r0, 0, 0)
-        
-        self.view_3d.addItem(p_mesh)
-        self.render_items.append(p_mesh)
-
-        # 3. 存储物理参数（用于动画实时连续计算，解决采样点不足导致的卡顿）
-        self.animated_meshes.append(p_mesh)
-        self.animation_paths.append({
-            "a": a, "e": e, "inc": inc, 
-            "is_bound": is_bound,
-            "speed": body.get("speed", 1.0),
-            "current_theta": 0.0 # 记录当前真近点角
-        })
-
-    def render_habitable_zone_mesh(self, hz_cfg):
-        """渲染绿色半透明宜居带色块"""
-        color = hz_cfg["color_cb"] if self.is_colorblind else hz_cfg["color_std"]
-        r_in, r_out = hz_cfg["inner"], hz_cfg["outer"]
-
-        theta = np.linspace(0, 2 * np.pi, 80)
-        pts = []
-        for t in theta:
-            pts.append([r_in * np.cos(t), r_in * np.sin(t), 0])
-            pts.append([r_out * np.cos(t), r_out * np.sin(t), 0])
-
-        hz_mesh = gl.GLLinePlotItem(pos=np.array(pts), color=color, width=4)
-        self.view_3d.addItem(hz_mesh)
-        self.render_items.append(hz_mesh)
-
-    # === 事件响应与控制 ===
+    # === 回调函数与逻辑 ===
     def set_camera_view(self, distance, elev, azim):
         self.view_3d.setCameraPosition(distance=distance, elevation=elev, azimuth=azim)
 
+    def reset_camera_target(self, distance, elev, azim):
+        self.combo_target.setCurrentIndex(0)
+        self.view_3d.opts['center'] = QVector3D(0, 0, 0)
+        self.set_camera_view(distance=distance, elevation=elev, azimuth=azim)
+
+    def on_target_changed(self, index):
+        target_name = self.combo_target.currentData()
+        if target_name is None:
+            self.view_3d.opts['center'] = QVector3D(0, 0, 0)
+            self.set_camera_view(distance=15, elev=30, azim=45)
+        else:
+            pos = self.renderer.get_body_position(target_name)
+            if pos:
+                self.view_3d.setCameraPosition(pos=pos, distance=4.0)
+        
+        self.update_telemetry_panel()
+
     def on_system_change(self, index):
-        if index == 0:
-            self.current_system = "solar_system"
-        elif index == 1:
-            self.current_system = "kepler_16"
-        elif index == 2:
-            self.current_system = "trappist_1"
+        systems = ["solar_system", "kepler_16", "trappist_1"]
+        self.current_system = systems[index]
         self.load_current_scene()
+
+    def on_grid_toggle(self, checked):
+        self.renderer.toggle_grid(checked)
+
+    def on_orbits_toggle(self, checked):
+        self.show_orbits = checked
+        self.renderer.toggle_orbits(checked)
 
     def on_hz_toggle(self, checked):
         self.show_hz = checked
@@ -286,43 +328,50 @@ class ProductionAstroSim(QMainWindow):
             self.btn_play.setText("▶ 播放动画")
             self.timer.stop()
 
+    def on_speed_change(self, value):
+        self.speed_factor = value / 10.0
+        self.lbl_speed_val.setText(f"{self.speed_factor:.1f}x")
+
+    def reset_sim_time(self):
+        self.sim_days = 0.0
+        self.update_time_display()
+        self.load_current_scene()
+
+    def update_time_display(self):
+        current_date = self.base_date.addDays(int(self.sim_days))
+        date_str = current_date.toString("yyyy-MM-dd")
+        years = self.sim_days / 365.25
+        self.lbl_clock.setText(f"🗓 {date_str}\n⏱ 经过: {int(self.sim_days)} 天 ({years:.2f} 年)")
+
     def update_animation(self):
-        # 使用真实帧时间间隔推进，保证连续流畅
-        dt = 0.03  # 每帧增量
-        
-        for i, mesh in enumerate(self.animated_meshes):
-            p = self.animation_paths[i]
-            
-            # 增量更新角度 theta，速度平滑且不受固定采样点限制
-            p["current_theta"] += p["speed"] * dt
-            theta = p["current_theta"]
+        base_dt = 0.03
+        effective_dt = base_dt * self.speed_factor
 
-            a, e, inc = p["a"], p["e"], p["inc"]
-            
-            if p["is_bound"]:
-                theta = theta % (2 * np.pi)
-                r = a * (1 - e**2) / (1 + e * np.cos(theta))
-            else:
-                # 针对双曲线逃逸轨道的范围限制
-                theta = (np.sin(theta) * 1.1) 
-                r = abs(a) * (e**2 - 1) / (1 + e * np.cos(theta))
+        self.renderer.update_animation(dt=effective_dt)
 
-            x = r * np.cos(theta)
-            y = r * np.sin(theta) * np.cos(inc)
-            z = r * np.sin(theta) * np.sin(inc)
+        # 1. 实时视角追踪
+        target_name = self.combo_target.currentData()
+        if target_name:
+            pos = self.renderer.get_body_position(target_name)
+            if pos:
+                opts = self.view_3d.opts
+                self.view_3d.setCameraPosition(
+                    pos=pos, 
+                    distance=opts['distance'], 
+                    elevation=opts['elevation'], 
+                    azimuth=opts['azimuth']
+                )
 
-            # 更新 Mesh 坐标
-            mesh.resetTransform()
-            mesh.translate(x, y, z)
+        # 2. 实时刷新物理参数遥测看板
+        self.update_telemetry_panel()
+
+        # 3. 时间推进
+        days_per_step = 0.5 * self.speed_factor
+        self.sim_days += days_per_step
+        self.update_time_display()
 
     def clear_scene_memory(self):
-        """彻底清理 3D 画布与内存中残留的 Mesh 句柄"""
-        for item in self.render_items:
-            if item in self.view_3d.items:
-                self.view_3d.removeItem(item)
-        self.render_items.clear()
-        self.animated_meshes.clear()
-        self.animation_paths.clear()
+        self.renderer.clear()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
