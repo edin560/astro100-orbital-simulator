@@ -2,12 +2,12 @@
   "solar_system": {
     "star": {
       "name": "Sun (太阳)",
-      "radius": 0.4,
+      "radius": 0.22,
       "color": [1.0, 0.9, 0.0, 1.0]
     },
     "planets": [
       {
-        "id": "mercury", "name": "Mercury (水星)", "a": 0.387, "e": 0.205, "inc": 7.0,
+        "id": "mercury", "name": "Mercury (水星)", "a": 0.45, "e": 0.18, "inc": 7.0,
         "color_std": [0.65, 0.65, 0.65, 1.0], "color_cb": [0.85, 0.85, 0.85, 1.0], "speed": 4.15,
         "desc": "离太阳最近、公转速度最快的行星"
       },
@@ -54,12 +54,12 @@
     ],
     "small_bodies": [
       {
-        "id": "1p_halley", "name": "1P/Halley (哈雷彗星)", "a": 3.5, "e": 0.967, "inc": 18.0, "is_bound": true,
+        "id": "1p_halley", "name": "1P/Halley (哈雷彗星)", "a": 3.8, "e": 0.92, "inc": 18.0, "is_bound": true,
         "color_std": [0.0, 0.9, 0.9, 1.0], "color_cb": [0.35, 0.7, 0.9, 1.0], "speed": 0.15,
         "desc": "周期彗星，高离心率椭圆轨道，离太阳越近运动速度越快"
       },
       {
-        "id": "31_atlas", "name": "31/ATLAS (逃逸彗星)", "a": -2.0, "e": 1.05, "inc": 35.0, "is_bound": false,
+        "id": "31_atlas", "name": "31/ATLAS (逃逸彗星)", "a": -3.2, "e": 1.10, "inc": 35.0, "is_bound": false,
         "color_std": [1.0, 0.3, 0.2, 1.0], "color_cb": [0.8, 0.2, 0.5, 1.0], "speed": 0.25,
         "desc": "双曲线逃逸轨道（Hyperbolic），不属于太阳系闭合系统"
       }

@@ -74,7 +74,6 @@ class SceneRenderer:
                     }
 
                 pos = p.get("pos_3d", [0.0, 0.0, 0.0])
-                # 使用 np.linalg.norm 或 纯 Python 模长计算
                 r = float((pos[0]**2 + pos[1]**2 + pos[2]**2) ** 0.5)
                 
                 a = p.get("a", 1.0)
@@ -128,16 +127,19 @@ class SceneRenderer:
         self.render_items.append(orbit_line)
         self.orbit_lines.append(orbit_line)
 
-        # 2. 实体行星
+        # 2. 实体行星/彗星 (显式设置 glOptions='opaque' 开启深度测试与正确遮挡)
         planet_color = list(base_color)
         if len(planet_color) == 3:
             planet_color.append(1.0)
         else:
             planet_color[3] = 1.0
 
-        p_md = gl.MeshData.sphere(rows=10, cols=10, radius=0.08)
-        p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=planet_color)
-        r0 = a * (1 - e**2) / (1 + e) if is_bound else abs(a) * (e**2 - 1) / (1 + e)
+        is_comet = (not is_bound) or (e > 0.8)
+        body_radius = 0.035 if is_comet else 0.08  # 彗星使用 0.035 半径，普通行星使用 0.08
+
+        p_md = gl.MeshData.sphere(rows=10, cols=10, radius=body_radius)
+        p_mesh = gl.GLMeshItem(meshdata=p_md, smooth=True, color=planet_color, glOptions='opaque')
+        r0 = a * (1 - e**2) / (1 + e) if (is_bound and e < 1.0) else abs(a) * (e**2 - 1) / (1 + e)
         p_mesh.translate(r0, 0, 0)
         self.view_3d.addItem(p_mesh)
         self.render_items.append(p_mesh)
@@ -161,7 +163,8 @@ class SceneRenderer:
 
     def render_star(self, radius, color, name="Central Star"):
         star_md = gl.MeshData.sphere(rows=12, cols=24, radius=radius)
-        star_mesh = gl.GLMeshItem(meshdata=star_md, smooth=True, color=color, shader='balloon')
+        # 显式添加 glOptions='opaque' 开启 Depth Buffer，确保能够阻挡在其背后的天体 Mesh
+        star_mesh = gl.GLMeshItem(meshdata=star_md, smooth=True, color=color, shader='balloon', glOptions='opaque')
         self.view_3d.addItem(star_mesh)
         self.render_items.append(star_mesh)
 
@@ -183,7 +186,7 @@ class SceneRenderer:
 
     def render_binary_star(self, star, phase_offset):
         s_md = gl.MeshData.sphere(rows=10, cols=20, radius=star["radius"])
-        s_mesh = gl.GLMeshItem(meshdata=s_md, smooth=True, color=star["color"], shader='balloon')
+        s_mesh = gl.GLMeshItem(meshdata=s_md, smooth=True, color=star["color"], shader='balloon', glOptions='opaque')
         self.view_3d.addItem(s_mesh)
         self.render_items.append(s_mesh)
 
@@ -241,7 +244,6 @@ class SceneRenderer:
                 mesh.resetTransform()
                 mesh.translate(x, y, z)
                 p["pos_3d"] = [x, y, z]
-
 
     def refresh_label_positions(self):
         if not self.labels:

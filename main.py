@@ -285,7 +285,7 @@ class ProductionAstroSim(QMainWindow):
     def reset_camera_target(self, distance, elev, azim):
         self.combo_target.setCurrentIndex(0)
         self.view_3d.opts['center'] = QVector3D(0, 0, 0)
-        self.set_camera_view(distance=distance, elevation=elev, azimuth=azim)
+        self.set_camera_view(distance=distance, elev=elev, azim=azim)
 
     def on_target_changed(self, index):
         target_name = self.combo_target.currentData()
