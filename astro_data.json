@@ -1,67 +1,67 @@
 {
   "solar_system": {
     "star": {
-      "name": "Sun (太阳)",
+      "name": "Sun",
       "radius": 0.22,
       "color": [1.0, 0.9, 0.0, 1.0]
     },
     "planets": [
       {
-        "id": "mercury", "name": "Mercury (水星)", "a": 0.45, "e": 0.18, "inc": 7.0,
+        "id": "mercury", "name": "Mercury", "a": 0.45, "e": 0.18, "inc": 7.0,
         "color_std": [0.65, 0.65, 0.65, 1.0], "color_cb": [0.85, 0.85, 0.85, 1.0], "speed": 4.15,
-        "desc": "离太阳最近、公转速度最快的行星"
+        "desc": "Innermost planet with the highest orbital speed."
       },
       {
-        "id": "venus", "name": "Venus (金星)", "a": 0.723, "e": 0.007, "inc": 3.39,
+        "id": "venus", "name": "Venus", "a": 0.723, "e": 0.007, "inc": 3.39,
         "color_std": [0.9, 0.7, 0.3, 1.0], "color_cb": [0.95, 0.8, 0.2, 1.0], "speed": 1.62,
-        "desc": "轨道最接近正圆的行星之一"
+        "desc": "Nearly circular orbit around the Sun."
       },
       {
-        "id": "earth", "name": "Earth (地球)", "a": 1.0, "e": 0.016, "inc": 0.0,
+        "id": "earth", "name": "Earth", "a": 1.0, "e": 0.016, "inc": 0.0,
         "color_std": [0.2, 0.6, 1.0, 1.0], "color_cb": [0.0, 0.45, 0.7, 1.0], "speed": 1.0,
-        "desc": "基准轨道面（黄道面）"
+        "desc": "Reference plane (Ecliptic)."
       },
       {
-        "id": "mars", "name": "Mars (火星)", "a": 1.524, "e": 0.093, "inc": 1.85,
+        "id": "mars", "name": "Mars", "a": 1.524, "e": 0.093, "inc": 1.85,
         "color_std": [0.9, 0.3, 0.2, 1.0], "color_cb": [0.8, 0.2, 0.2, 1.0], "speed": 0.53,
-        "desc": "类地行星的外边界"
+        "desc": "Outer boundary of the terrestrial planets."
       },
       {
-        "id": "jupiter", "name": "Jupiter (木星)", "a": 2.5, "e": 0.048, "inc": 1.3,
+        "id": "jupiter", "name": "Jupiter", "a": 2.5, "e": 0.048, "inc": 1.3,
         "color_std": [0.8, 0.6, 0.4, 1.0], "color_cb": [0.7, 0.5, 0.2, 1.0], "speed": 0.2,
-        "desc": "气态巨行星（为了 3D 渲染效果对 AU 做了平滑缩放）"
+        "desc": "Gas giant (AU log-scaled for visualization)."
       },
       {
-        "id": "saturn", "name": "Saturn (土星)", "a": 3.2, "e": 0.056, "inc": 2.49,
+        "id": "saturn", "name": "Saturn", "a": 3.2, "e": 0.056, "inc": 2.49,
         "color_std": [0.9, 0.8, 0.5, 1.0], "color_cb": [0.9, 0.8, 0.3, 1.0], "speed": 0.1,
-        "desc": "拥有显著环系统的巨行星"
+        "desc": "Gas giant prominent for its extensive ring system."
       },
       {
-        "id": "uranus", "name": "Uranus (天王星)", "a": 4.0, "e": 0.046, "inc": 0.77,
+        "id": "uranus", "name": "Uranus", "a": 4.0, "e": 0.046, "inc": 0.77,
         "color_std": [0.4, 0.8, 0.9, 1.0], "color_cb": [0.3, 0.7, 0.9, 1.0], "speed": 0.05,
-        "desc": "冰巨星"
+        "desc": "Ice giant with high axial tilt."
       },
       {
-        "id": "neptune", "name": "Neptune (海王星)", "a": 4.8, "e": 0.010, "inc": 1.77,
+        "id": "neptune", "name": "Neptune", "a": 4.8, "e": 0.010, "inc": 1.77,
         "color_std": [0.2, 0.3, 0.9, 1.0], "color_cb": [0.1, 0.2, 0.8, 1.0], "speed": 0.03,
-        "desc": "太阳系八大行星中拥有最长“一年”的行星"
+        "desc": "Longest orbital period among major planets."
       },
       {
-        "id": "pluto", "name": "Pluto (冥王星)", "a": 5.5, "e": 0.248, "inc": 17.16,
+        "id": "pluto", "name": "Pluto", "a": 5.5, "e": 0.248, "inc": 17.16,
         "color_std": [0.7, 0.5, 0.4, 1.0], "color_cb": [0.9, 0.6, 0.0, 1.0], "speed": 0.02,
-        "desc": "倾角与离心率极高的矮行星，部分轨道进入海王星内侧"
+        "desc": "Dwarf planet with highly inclined and eccentric orbit."
       }
     ],
     "small_bodies": [
       {
-        "id": "1p_halley", "name": "1P/Halley (哈雷彗星)", "a": 3.8, "e": 0.92, "inc": 18.0, "is_bound": true,
+        "id": "1p_halley", "name": "1P/Halley", "a": 3.8, "e": 0.92, "inc": 18.0, "is_bound": true,
         "color_std": [0.0, 0.9, 0.9, 1.0], "color_cb": [0.35, 0.7, 0.9, 1.0], "speed": 0.15,
-        "desc": "周期彗星，高离心率椭圆轨道，离太阳越近运动速度越快"
+        "desc": "Periodic comet in highly eccentric elliptical orbit."
       },
       {
-        "id": "31_atlas", "name": "31/ATLAS (逃逸彗星)", "a": -3.2, "e": 1.10, "inc": 35.0, "is_bound": false,
+        "id": "31_atlas", "name": "31/ATLAS", "a": -3.2, "e": 1.10, "inc": 35.0, "is_bound": false,
         "color_std": [1.0, 0.3, 0.2, 1.0], "color_cb": [0.8, 0.2, 0.5, 1.0], "speed": 0.25,
-        "desc": "双曲线逃逸轨道（Hyperbolic），不属于太阳系闭合系统"
+        "desc": "Hyperbolic escape orbit (unbound trajectory)."
       }
     ]
   },
@@ -70,14 +70,14 @@
       "name": "Kepler-16 (Binary Star System)",
       "is_binary": true,
       "stars": [
-        { "name": "Kepler-16 A (主星)", "radius": 0.3, "color": [1.0, 0.8, 0.1, 1.0], "orbit_r": 0.3 },
-        { "name": "Kepler-16 B (伴星)", "radius": 0.18, "color": [1.0, 0.3, 0.1, 1.0], "orbit_r": 0.5 }
+        { "name": "Kepler-16 A", "radius": 0.3, "color": [1.0, 0.8, 0.1, 1.0], "orbit_r": 0.3 },
+        { "name": "Kepler-16 B", "radius": 0.18, "color": [1.0, 0.3, 0.1, 1.0], "orbit_r": 0.5 }
       ],
       "planets": [
         {
           "name": "Kepler-16 b", "a": 1.8, "e": 0.006, "inc": 0.0,
           "color": [0.7, 0.4, 0.9, 1.0], "speed": 0.8,
-          "desc": "环双星行星（Circumbinary Planet），同时围绕两颗恒星的公共质心旋转"
+          "desc": "Circumbinary planet orbiting both host stars."
         }
       ]
     },
@@ -85,7 +85,7 @@
       "name": "TRAPPIST-1 System",
       "is_binary": false,
       "star": {
-        "name": "TRAPPIST-1 (红矮星)",
+        "name": "TRAPPIST-1",
         "radius": 0.3,
         "color": [1.0, 0.3, 0.1, 1.0]
       },
@@ -97,9 +97,9 @@
         { "name": "TRAPPIST-1 b", "a": 0.5, "e": 0.01, "inc": 0.0, "in_hz": false, "color": [0.6, 0.6, 0.6, 1.0], "speed": 3.0 },
         { "name": "TRAPPIST-1 c", "a": 0.7, "e": 0.006, "inc": 0.0, "in_hz": false, "color": [0.7, 0.6, 0.5, 1.0], "speed": 2.2 },
         { "name": "TRAPPIST-1 d", "a": 0.9, "e": 0.008, "inc": 0.0, "in_hz": false, "color": [0.8, 0.7, 0.5, 1.0], "speed": 1.6 },
-        { "name": "TRAPPIST-1 e (宜居带)", "a": 1.3, "e": 0.007, "inc": 0.0, "in_hz": true, "color": [0.2, 0.8, 0.4, 1.0], "speed": 1.2 },
-        { "name": "TRAPPIST-1 f (宜居带)", "a": 1.6, "e": 0.011, "inc": 0.0, "in_hz": true, "color": [0.2, 0.9, 0.5, 1.0], "speed": 0.9 },
-        { "name": "TRAPPIST-1 g (宜居带)", "a": 2.0, "e": 0.003, "inc": 0.0, "in_hz": true, "color": [0.1, 0.7, 0.3, 1.0], "speed": 0.7 },
+        { "name": "TRAPPIST-1 e (HZ)", "a": 1.3, "e": 0.007, "inc": 0.0, "in_hz": true, "color": [0.2, 0.8, 0.4, 1.0], "speed": 1.2 },
+        { "name": "TRAPPIST-1 f (HZ)", "a": 1.6, "e": 0.011, "inc": 0.0, "in_hz": true, "color": [0.2, 0.9, 0.5, 1.0], "speed": 0.9 },
+        { "name": "TRAPPIST-1 g (HZ)", "a": 2.0, "e": 0.003, "inc": 0.0, "in_hz": true, "color": [0.1, 0.7, 0.3, 1.0], "speed": 0.7 },
         { "name": "TRAPPIST-1 h", "a": 2.5, "e": 0.006, "inc": 0.0, "in_hz": false, "color": [0.4, 0.5, 0.7, 1.0], "speed": 0.5 }
       ]
     }
